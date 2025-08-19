@@ -168,18 +168,52 @@ auto CreateLevelMap()
     // Slice the world along each axis in pieces that have no wall/hole transitions.
     // This is a simple way, though not optimal, to ensure that all adjacent pairs of polygons share the exact same edge,
     // something that our renderer requires to ensure gapless rendering. OpenGL has the same requirement, by the way.
+    // Slice the world along each axis in pieces that have no wall/hole transitions.
+    // This ensures adjacent quads share identical edges (no cracks).
     std::array<std::array<int, size[3]>, 3> slice = {};
-    for(unsigned a=0; a<3; ++a)
-    {
-        std::array<int,3> v0{ a==0, a==1, a==2 }, v1{ a==1, a==2, a==0 }, v2{ a==2, a==0, a==1 };
-        for(int Q,q,p=0; p<size[3]; p += (slice[a][p] = q))
-            for(q=Q=1; p+q < size[3] && Q; q+=Q)
-            for(int e=0; e < size[3] && Q; ++e)
-            for(int d=0; d < size[3] && Q; ++d)
-                if(std::array a = {p+q-1,d,e}, b = {p+q,d,e};
-                   hole(Dot(v0,a), Dot(v1,a), Dot(v2,a)) != hole(Dot(v0,b), Dot(v1,b), Dot(v2,b)))
-                    Q = 0;
+
+    // Helper to permute local (run,c1,c2) coordinates into (x,z,y) for hole()
+    auto mapToXZY = [](const std::array<int,3>& v, int axisRun) -> std::array<int,3> {
+        std::array<int,3> out{};
+        out[axisRun]              = v[0]; // run axis
+        out[(axisRun + 1) % 3]    = v[1]; // first cross axis
+        out[(axisRun + 2) % 3]    = v[2]; // second cross axis
+        return out; // (x,z,y) in your convention
+    };
+
+    for (int axisRun = 0; axisRun < 3; ++axisRun) {
+        const int lenRun    = size[axisRun];
+        const int lenCross1 = size[(axisRun + 1) % 3];
+        const int lenCross2 = size[(axisRun + 2) % 3];
+
+        for (int start = 0; start < lenRun; start += slice[axisRun][start]) {
+            int segment = 1;
+            bool canGrow = true;
+
+            while (start + segment < lenRun && canGrow) {
+                for (int c1 = 0; c1 < lenCross1 && canGrow; ++c1) {
+                    for (int c2 = 0; c2 < lenCross2 && canGrow; ++c2) {
+                        std::array<int,3> A{ start + segment - 1, c1, c2 };
+                        std::array<int,3> B{ start + segment,     c1, c2 };
+
+                        auto aXZY = mapToXZY(A, axisRun);
+                        auto bXZY = mapToXZY(B, axisRun);
+
+                        bool aHole = hole(aXZY[0], aXZY[1], aXZY[2]);
+                        bool bHole = hole(bXZY[0], bXZY[1], bXZY[2]);
+
+                        if (aHole != bHole) {
+                            canGrow = false; // transition found → stop
+                        }
+                    }
+                }
+                if (canGrow) ++segment;
+            }
+
+            slice[axisRun][start] = segment;
+        }
     }
+
     // Process each resulting cuboid.
     for(int x=0; x<size[0]; x += slice[0][x])
     for(int z=0; z<size[1]; z += slice[1][z])
@@ -211,10 +245,6 @@ auto CreateLevelMap()
                     return AsArray(
                         point,
                         AsArray(w,h)*uvdim, 
-                #if 0
-                        (z+(m+5)%7/7.f)/12, (y+m/36.f)/10, x/23.f
-                        //point*.02f + AsArray(0,0.2f,0)
-                #elif 1
                         // Calculate distance of this point to each lightsource
                         std::apply([&](auto... l)
                         {
@@ -225,9 +255,6 @@ auto CreateLevelMap()
                                     )
                                     + ...);
                         }, lights)
-                #else
-                        1,1,1
-                #endif
                         );
                 };
                 AddPoly( { point(0,0), point(width,0), point(width,height), point(0,height) },
