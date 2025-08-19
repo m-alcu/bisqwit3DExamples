@@ -62,6 +62,7 @@
         "set": "cpp",
         "strstream": "cpp",
         "chrono": "cpp",
-        "ratio": "cpp"
+        "ratio": "cpp",
+        "ranges": "cpp"
     }
 }

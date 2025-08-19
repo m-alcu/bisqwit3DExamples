@@ -192,7 +192,7 @@ auto CreateLevelMap()
             // And create polygons for its edges (where necessary)
             for(unsigned m=0; m<36; m+=6)
             {
-                constexpr unsigned long vectors = 0b010001'001010'010100'001100'100010'100001ul;
+                constexpr uint64_t vectors = 0b010001'001010'010100'001100'100010'100001ul;
                 auto bit = [m](unsigned n) {return int(vectors >> (n+m))&1; };
                 std::array<int,3> right = {bit(5),bit(4),bit(3)}, down = {bit(2),bit(1),bit(0)};
                 auto normal = CrossProduct(Normalized(down), Normalized(right));
@@ -239,7 +239,7 @@ auto CreateLevelMap()
 
 int main()
 {
-    const int W = 1920, H = 1080;
+    const int W = 320, H = 240;
     // Create a screen.
     SDL_Window* window = SDL_CreateWindow("Chip8", W*4,H*4, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
@@ -319,11 +319,11 @@ int main()
     float aa=0.66,ab=0.63,ac=-0.28,ad=0.28;  // View rotation quaternion
     float tform[16]{};                       // View rotation matrix (calculated from the quaternion)
 
+    auto [vertices,polys] = CreateLevelMap();
+
     // Main loop
     for(std::map<int,bool> keys; !keys[SDLK_ESCAPE]; )
     {
-        auto [vertices,polys] = CreateLevelMap();
-
         // Process events.
         for(SDL_Event ev; SDL_PollEvent(&ev); )
             switch(ev.type)
