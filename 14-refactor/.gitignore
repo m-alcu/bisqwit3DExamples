@@ -1,0 +1,5 @@
+/build/*
+imgui.ini
+
+# But keep sdl3.dll inside build/
+!build/SDL3.dll
