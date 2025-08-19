@@ -77,100 +77,58 @@ void CreateIcosahedron(CoordType radius, auto&& AddVertex, auto&& AddFace)
         AddFace( {unsigned(f)>>8u, (f>>4u)&15u, f&15u} );
 }
 
-auto CreateLevelMap()
-{
-    // Dimensions of the map
-    constexpr int size[4] { 23, 11, 13, std::max(size[0],std::max(size[1],size[2])) };
-    // List of different columns (bitmasks indicating holes in vertical columns of blocks)
-    static constexpr const unsigned columns[] {
-        /*A*/ 0b0000000000000,
-        /*B*/ 0b0000000011100,
-        /*C*/ 0b0000000111100,
-        /*D*/ 0b0000000111000,
-        /*E*/ 0b0000000110000,
-        /*F*/ 0b0000000001100,
-        /*G*/ 0b0000000010000,
-        /*H*/ 0b0000000000111,
-        /*I*/ 0b0000000000100,
-        /*J*/ 0b0000000000011,
-        /*K*/ 0b0000000010011,
-        /*L*/ 0b0000000001111,
-        /*M*/ 0b0000001111111,
-        /*N*/ 0b0000001111110,
-        /*O*/ 0b0000001110111,
-        /*P*/ 0b1111111111111,
-        /*Q*/ 0b0000000101111,
-        /*R*/ 0b0000001110000,
-        /*S*/ 0b0000001111100,
-        /*T*/ 0b0000001111000,
-        /*U*/ 0b0000001100000,};
-    // World geometry (each symbol is an index to columns[])
-    static constexpr const char map[] =
-        "LLLLLLPPPPQQMMMASSSTTUU"
-        "LLLLLLPPPPQQMMMOMMMNNRR"
-        "LLLLLLLAGALLMMMOMMMNNNN"
-        "LLLLLLLJKJLLMMMOMMMNNNN"
-        "HHHHHHHJKJLLMNMAMMMNNNN"
-        "HHHHHHHJKJLLMNMOMMMMMMN"
-        "HHHHHIHJKJLLMNMOMMMMMMN"
-        "AAFFAAAAGAAAAAAAAAAAEEA"
-        "AAFFAAAAGAAAAAAAAAAAEEA"
-        "AABBBBBBBBBBBBBBCCDDDEA"
-        "AABBBBBBBBBBBBBBCCDDDEA";
-    // Function to test whether a particular cell in the world is a hole (false indicates it’s solid)
+// Dimensions of the map
+constexpr int size[4] { 23, 11, 13, std::max(size[0],std::max(size[1],size[2])) };
+// List of different columns (bitmasks indicating holes in vertical columns of blocks)
+static constexpr const unsigned columns[] {
+    /*A*/ 0b0000000000000,
+    /*B*/ 0b0000000011100,
+    /*C*/ 0b0000000111100,
+    /*D*/ 0b0000000111000,
+    /*E*/ 0b0000000110000,
+    /*F*/ 0b0000000001100,
+    /*G*/ 0b0000000010000,
+    /*H*/ 0b0000000000111,
+    /*I*/ 0b0000000000100,
+    /*J*/ 0b0000000000011,
+    /*K*/ 0b0000000010011,
+    /*L*/ 0b0000000001111,
+    /*M*/ 0b0000001111111,
+    /*N*/ 0b0000001111110,
+    /*O*/ 0b0000001110111,
+    /*P*/ 0b1111111111111,
+    /*Q*/ 0b0000000101111,
+    /*R*/ 0b0000001110000,
+    /*S*/ 0b0000001111100,
+    /*T*/ 0b0000001111000,
+    /*U*/ 0b0000001100000,};
+// World geometry (each symbol is an index to columns[])
+static constexpr const char map[] =
+    "LLLLLLPPPPQQMMMASSSTTUU"
+    "LLLLLLPPPPQQMMMOMMMNNRR"
+    "LLLLLLLAGALLMMMOMMMNNNN"
+    "LLLLLLLJKJLLMMMOMMMNNNN"
+    "HHHHHHHJKJLLMNMAMMMNNNN"
+    "HHHHHHHJKJLLMNMOMMMMMMN"
+    "HHHHHIHJKJLLMNMOMMMMMMN"
+    "AAFFAAAAGAAAAAAAAAAAEEA"
+    "AAFFAAAAGAAAAAAAAAAAEEA"
+    "AABBBBBBBBBBBBBBCCDDDEA"
+    "AABBBBBBBBBBBBBBCCDDDEA";
+
+
+// Slice the world along each axis in pieces that have no wall/hole transitions.
+// This is a simple way, though not optimal, to ensure that all adjacent pairs of polygons share the exact same edge,
+// something that our renderer requires to ensure gapless rendering. OpenGL has the same requirement, by the way.
+// Slice the world along each axis in pieces that have no wall/hole transitions.
+// This ensures adjacent quads share identical edges (no cracks).
+std::array<std::array<int, size[3]>, 3> slice = {};    
+
+auto CreateLevelMap() {
+
+        // Function to test whether a particular cell in the world is a hole (false indicates it’s solid)
     auto hole = [&](int x,int z,int y)
         { return y>=size[2] || (x>=0 && x<size[0] && z>=0 && z<size[1] && y>=0 && ((columns[map[z*size[0]+x]-65] >> y)&1)); };
-
-    std::vector<std::array<float,8>> points;
-    std::vector<Polygon> poly;
-
-    // Light sources. All of them are simply 3D points with a color.
-    static const std::array<std::array<std::array<float,3>,2>,4> lights
-    {{
-        {{{ (15.2-1.5)*4, (7.5-1.5)*4 , ( 2.2-2.5)*4 },{ 1, 0.6, .1 }}}, // orange on the floor
-        {{{ (17.3-1.5)*4, (7.5-7.5)*4 , ( 5.7-2.5)*4 },{.2,  .2,  1 }}}, // blue at the end
-        {{{ ( 9.5-1.5)*4, (7.5-7  )*4 , (17.5-2.5)*4 },{96, 96, 117 }}}, // huge white in the ceiling tunnel
-        {{{ ( 9.5-1.5)*4, (7.5-1.1)*4 , ( 3.9-2.5)*4 },{ 2, .4,  .2 }}}  // red in tunnel
-    }};
-    static auto start = std::chrono::system_clock::now();
-    float angle = std::chrono::duration<float>(std::chrono::system_clock::now() - start).count() * 1.f;
-    auto LightCoord = [sin = std::sin(angle), cos = std::cos(angle), center=AsArray(10*4, 3.5f*4, 0)](const auto& coord)
-    {
-        // Return the lightsource coordinate, but rotated around the approximate center of the world.
-        return center + (coord-center) * AsArray(sin+cos,cos-sin,1);
-        //return coord;
-    };
-    auto AddPoly = [&](std::initializer_list<auto> newpoints, auto&&... props)
-    {
-        points.insert(points.end(), newpoints);
-        const auto& p = &*newpoints.begin();
-        auto line2         = Normalized(AsArray(0,0,0)+p[2]-p[0]);
-        auto line1         = Normalized(AsArray(0,0,0)+p[1]-p[0]);
-        auto normal        = Normalized(CrossProduct(line1, line2));
-        auto tangent       = Normalized(CrossProduct(normal, line1));
-        auto bitangent     = Normalized(CrossProduct(normal, tangent));
-        poly.emplace_back( Polygon{ points.size()-newpoints.size(),newpoints.size(),
-                                    props...,
-                                    normal,tangent,bitangent} );
-    };
-    for(auto& l: lights)
-    {
-        std::vector<std::array<float,3>> vert;
-        CreateIcosahedron(std::cbrt(Sum(l[1])),
-            [&](std::array<float,3> v) { vert.push_back(v + LightCoord(l[0])); },
-            [&](std::array<unsigned,3> p)
-        {
-            auto point = [&](int n) { return AsArray(vert[p[n]], n,n, l[1]*4); };
-            AddPoly( {point(0), point(1), point(2)}, 0u,0u, 256u,256u, 1u );
-        });
-    }
-
-    // Slice the world along each axis in pieces that have no wall/hole transitions.
-    // This is a simple way, though not optimal, to ensure that all adjacent pairs of polygons share the exact same edge,
-    // something that our renderer requires to ensure gapless rendering. OpenGL has the same requirement, by the way.
-    // Slice the world along each axis in pieces that have no wall/hole transitions.
-    // This ensures adjacent quads share identical edges (no cracks).
-    std::array<std::array<int, size[3]>, 3> slice = {};
 
     // Helper to permute local (run,c1,c2) coordinates into (x,z,y) for hole()
     auto mapToXZY = [](const std::array<int,3>& v, int axisRun) -> std::array<int,3> {
@@ -212,6 +170,59 @@ auto CreateLevelMap()
 
             slice[axisRun][start] = segment;
         }
+    }
+
+}
+
+auto CreatePolys()
+{
+
+    std::vector<std::array<float,8>> points;
+    std::vector<Polygon> poly;
+
+    // Function to test whether a particular cell in the world is a hole (false indicates it’s solid)
+    auto hole = [&](int x,int z,int y)
+    { return y>=size[2] || (x>=0 && x<size[0] && z>=0 && z<size[1] && y>=0 && ((columns[map[z*size[0]+x]-65] >> y)&1)); };
+
+    // Light sources. All of them are simply 3D points with a color.
+    static const std::array<std::array<std::array<float,3>,2>,4> lights
+    {{
+        {{{ (15.2-1.5)*4, (7.5-1.5)*4 , ( 2.2-2.5)*4 },{ 1, 0.6, .1 }}}, // orange on the floor
+        {{{ (17.3-1.5)*4, (7.5-7.5)*4 , ( 5.7-2.5)*4 },{.2,  .2,  1 }}}, // blue at the end
+        {{{ ( 9.5-1.5)*4, (7.5-7  )*4 , (17.5-2.5)*4 },{96, 96, 117 }}}, // huge white in the ceiling tunnel
+        {{{ ( 9.5-1.5)*4, (7.5-1.1)*4 , ( 3.9-2.5)*4 },{ 2, .4,  .2 }}}  // red in tunnel
+    }};
+    static auto start = std::chrono::system_clock::now();
+    float angle = std::chrono::duration<float>(std::chrono::system_clock::now() - start).count() * 1.f;
+    auto LightCoord = [sin = std::sin(angle), cos = std::cos(angle), center=AsArray(10*4, 3.5f*4, 0)](const auto& coord)
+    {
+        // Return the lightsource coordinate, but rotated around the approximate center of the world.
+        return center + (coord-center) * AsArray(sin+cos,cos-sin,1);
+        //return coord;
+    };
+    auto AddPoly = [&](std::initializer_list<auto> newpoints, auto&&... props)
+    {
+        points.insert(points.end(), newpoints);
+        const auto& p = &*newpoints.begin();
+        auto line2         = Normalized(AsArray(0,0,0)+p[2]-p[0]);
+        auto line1         = Normalized(AsArray(0,0,0)+p[1]-p[0]);
+        auto normal        = Normalized(CrossProduct(line1, line2));
+        auto tangent       = Normalized(CrossProduct(normal, line1));
+        auto bitangent     = Normalized(CrossProduct(normal, tangent));
+        poly.emplace_back( Polygon{ points.size()-newpoints.size(),newpoints.size(),
+                                    props...,
+                                    normal,tangent,bitangent} );
+    };
+    for(auto& l: lights)
+    {
+        std::vector<std::array<float,3>> vert;
+        CreateIcosahedron(std::cbrt(Sum(l[1])),
+            [&](std::array<float,3> v) { vert.push_back(v + LightCoord(l[0])); },
+            [&](std::array<unsigned,3> p)
+        {
+            auto point = [&](int n) { return AsArray(vert[p[n]], n,n, l[1]*4); };
+            AddPoly( {point(0), point(1), point(2)}, 0u,0u, 256u,256u, 1u );
+        });
     }
 
     // Process each resulting cuboid.
@@ -346,11 +357,13 @@ int main()
     float aa=0.66,ab=0.63,ac=-0.28,ad=0.28;  // View rotation quaternion
     float tform[16]{};                       // View rotation matrix (calculated from the quaternion)
 
-    auto [vertices,polys] = CreateLevelMap();
+    CreateLevelMap();
 
     // Main loop
     for(std::map<int,bool> keys; !keys[SDLK_ESCAPE]; )
     {
+        
+        auto [vertices,polys] = CreatePolys();
         // Process events.
         for(SDL_Event ev; SDL_PollEvent(&ev); )
             switch(ev.type)
